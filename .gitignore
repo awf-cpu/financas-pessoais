@@ -1,0 +1,33 @@
+# Segredos e config local
+.env
+*.env
+!.env.example
+
+# Dados financeiros — NUNCA versionar
+*.db
+*.sqlite
+*.sqlite3
+data/
+uploads/
+extratos/
+*.ofx
+*.csv
+*.pdf
+!tests/**/*.csv
+!tests/**/*.ofx
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Editores / SO
+.vscode/
+.idea/
+.DS_Store

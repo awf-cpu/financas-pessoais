@@ -1,0 +1,32 @@
+services:
+  app:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    ports:
+      - "8000:8000"
+    volumes:
+      - ./data:/app/data            # banco SQLite + logs persistem aqui
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://localhost:8000/health').status==200 else 1)"]
+      interval: 1m
+      timeout: 10s
+      retries: 3
+
+  # Sincronização automática a cada 6h (e-mail/Pluggy). Opcional: remova se
+  # preferir rodar o cron no próprio host do VPS.
+  sync:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - ./data:/app/data
+    entrypoint: ["/bin/sh", "-c"]
+    command:
+      - |
+        while true; do
+          python -m scripts.sync || true
+          sleep 21600
+        done
+    depends_on:
+      - app

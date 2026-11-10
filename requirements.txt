@@ -1,0 +1,23 @@
+# Núcleo da API web
+fastapi==0.115.5
+uvicorn[standard]==0.32.1
+jinja2==3.1.4
+python-multipart==0.0.17
+
+# Banco de dados
+SQLAlchemy==2.0.36
+
+# Configuração
+pydantic==2.10.3
+pydantic-settings==2.6.1
+python-dotenv==1.0.1
+
+# HTTP (clientes de API - Pluggy etc.)
+httpx==0.28.1
+
+# Importação de extratos/faturas (opcionais em runtime, guardados por try/except)
+ofxparse==0.21          # OFX
+pdfplumber==0.11.4      # PDF de faturas
+
+# Categorização por LLM (opcional - só usado se ANTHROPIC_API_KEY estiver definido)
+anthropic==0.40.0
