@@ -7,6 +7,7 @@ Em produção, sirva sempre atrás de HTTPS.
 """
 from __future__ import annotations
 
+import hmac
 from pathlib import Path
 
 from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
@@ -28,6 +29,9 @@ templates = Jinja2Templates(directory=str(BASE_DIR / "templates"))
 app = FastAPI(title="Finanças Pessoais", version="0.1.0")
 app.mount("/static", StaticFiles(directory=str(BASE_DIR / "static")), name="static")
 
+DEFAULT_TOKEN = "troque-me-por-um-token-forte"
+MAX_UPLOAD_BYTES = 10 * 1024 * 1024
+
 # Rotas públicas (necessárias para a PWA instalar/funcionar sem token).
 _PUBLIC_PATHS = {"/manifest.webmanifest", "/sw.js", "/login", "/health", "/favicon.ico"}
 
@@ -47,7 +51,10 @@ def _token_ok(request: Request) -> bool:
         or request.query_params.get("token")
         or request.cookies.get("app_token")
     )
-    return bool(provided) and provided == expected
+    # Recusa o token-padrão do exemplo e compara em tempo constante.
+    if not provided or not expected or expected == DEFAULT_TOKEN:
+        return False
+    return hmac.compare_digest(provided.encode(), expected.encode())
 
 
 def require_token(request: Request) -> None:
@@ -69,7 +76,7 @@ async def _auth_guard(request: Request, call_next):
     response = await call_next(request)
     # Se entrou com ?token=, grava cookie para as próximas visitas.
     token = request.query_params.get("token")
-    if token and token == get_settings().app_token:
+    if token and hmac.compare_digest(token.encode(), get_settings().app_token.encode()):
         response.set_cookie(
             "app_token", token, httponly=True, samesite="lax", max_age=60 * 60 * 24 * 90
         )
@@ -140,7 +147,9 @@ def api_transactions(
 
 @app.post("/api/upload", dependencies=[Depends(require_token)])
 async def api_upload(file: UploadFile = File(...), db: Session = Depends(get_db)):
-    content = await file.read()
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Arquivo acima de 10 MB.")
     try:
         raw = fileimport.import_file(file.filename or "arquivo", content)
     except Exception as e:
@@ -198,7 +207,9 @@ async def api_registrato(file: UploadFile = File(...), db: Session = Depends(get
     from .models import Institution
     from .providers.registrato import parse_ccs_pdf
 
-    content = await file.read()
+    content = await file.read(MAX_UPLOAD_BYTES + 1)
+    if len(content) > MAX_UPLOAD_BYTES:
+        raise HTTPException(status_code=413, detail="Arquivo acima de 10 MB.")
     try:
         discovered = parse_ccs_pdf(content)
     except Exception as e:

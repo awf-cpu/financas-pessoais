@@ -1,162 +1,38 @@
-# 💰 Finanças Pessoais
+# personal-finance-hub
 
-Sistema **próprio, gratuito e auto-hospedado** para analisar suas contas e
-cartões automaticamente. Pensado para o **Brasil / PT-BR**, roda no **seu VPS**
-e abre tanto no **navegador do computador** quanto como **app no celular** (PWA).
+[![CI](https://github.com/awf-cpu/financas-pessoais/actions/workflows/ci.yml/badge.svg)](https://github.com/awf-cpu/financas-pessoais/actions/workflows/ci.yml)
+![Python 3.12](https://img.shields.io/badge/python-3.12-blue)
+![License: MIT](https://img.shields.io/badge/license-MIT-green)
 
-> **Filosofia:** zero gasto novo. Usa só o que você já tem (VPS, e-mail,
-> conta Hugging Face). Nenhuma API paga é obrigatória.
+A **self-hosted personal finance analyzer** built for Brazil: it imports bank statements and card bills, categorizes every transaction in Portuguese and shows the result in a mobile-friendly dashboard (installable PWA). No paid API is required; the free path is the default. (Portuguese README: [README.pt-BR.md](README.pt-BR.md).)
 
----
+## What it shows
 
-## O que ele faz
+- **Ingestion** from OFX, CSV and PDF files, plus an optional read-only IMAP reader that picks up statements your bank emails you.
+- **Categorization** with an offline PT-BR rule engine; optional second opinion from Hugging Face (free tier) or Claude. Only the transaction description leaves the machine, and only if you opt in.
+- **Analysis**: balance, income vs. spending per month, spending by category, largest expenses.
+- **Provider abstraction** (`app/providers/`): file import, IMAP, Pluggy (Open Finance, off by default) and a parser for the Central Bank "Registrato" report, all behind one interface.
+- **Security basics**: token-protected API (constant-time comparison, example token refused, HttpOnly cookie), 10 MB upload cap, non-root Docker image, healthcheck.
 
-- **Importa** extratos e faturas em **OFX, CSV e PDF** (todo banco/cartão exporta de graça).
-- **Ingestão automática por e-mail (IMAP/Gmail):** lê os extratos/faturas que o
-  banco te manda por e-mail e processa os anexos sozinho.
-- **Categoriza** as transações em português (mercado, transporte, streaming…) com
-  um **motor de regras** (offline, grátis) + reforço opcional via **Hugging Face**.
-- **Analisa:** saldo, entradas × saídas por mês, gastos por categoria, maiores despesas.
-- **Dashboard PWA:** responsivo, instalável no celular (tela inicial) e no desktop.
-- **Pluggy (Open Finance):** suporte **opcional** e desligado por padrão, caso um
-  dia você queira conexão direta via o tier gratuito deles.
+## Stack
 
----
+FastAPI, SQLAlchemy (SQLite by default, Postgres supported), Pydantic Settings, pdfplumber, ofxparse, vanilla JS PWA with a service worker, Docker Compose.
 
-## Como a “automação de graça” funciona
-
-Conexão bancária 100% automática no Brasil exige um agregador licenciado
-(Pluggy/Belvo), que é **pago** (a partir de ~R$2.500/mês). Para ter automação
-**sem custo**, este projeto usa dois caminhos:
-
-| Caminho | Automático? | Custo | Como |
-|---|---|---|---|
-| **E-mail (IMAP)** | ✅ Sim, por cron | Grátis | Banco envia fatura/extrato por e-mail → o sistema lê os anexos |
-| **Importar arquivo** | Semiautomático | Grátis | Você exporta OFX/CSV/PDF e envia pelo dashboard (1 clique) |
-| **Pluggy** | ✅ Sim | Pago (opcional) | Open Finance; desligado por padrão |
-
-Dica: configure seu banco/cartão para **enviar a fatura/extrato por e-mail** e
-deixe o cron rodando — aí fica automático sem pagar nada.
-
-### 🏦 Descobrir TODAS as suas contas — Registrato (Banco Central)
-
-Não sabe em quais bancos você tem conta? O **[Registrato](https://www.bcb.gov.br/cidadaniafinanceira/registrato)**
-do Banco Central mostra isso **de graça** (login **gov.br**):
-
-1. Acesse o Registrato e faça login com gov.br.
-2. Gere o **“Relatório de Relacionamentos com IFs (CCS)”** (PDF).
-3. No dashboard, clique em **“Importar relatório CCS (PDF)”**.
-
-O sistema lista **todas as instituições** onde seu CPF tem/teve relacionamento —
-seu mapa para saber de onde coletar extratos. Obs.: o CCS mostra *onde* você tem
-conta, **não** os saldos/extratos (esses você pega em cada banco, por OFX/e-mail).
-Vale olhar também, no Registrato, o **Relatório de Chaves Pix** e o **SCR** (crédito).
-
-> O login gov.br tem CAPTCHA e **não** é (nem deve ser) automatizado — por isso o
-> fluxo é: você baixa o PDF e importa aqui com um clique.
-
----
-
-## Rodando localmente (teste rápido)
+## Run it
 
 ```bash
-cp .env.example .env            # edite APP_TOKEN (obrigatório)
-python3 -m venv .venv && . .venv/bin/activate
+cp .env.example .env            # set APP_TOKEN to a strong random value
 pip install -r requirements.txt
-uvicorn app.main:app --reload
-# abra http://localhost:8000/?token=SEU_TOKEN
+uvicorn app.main:app            # open http://localhost:8000/?token=YOUR_TOKEN
+pytest -q                       # 17 tests, offline
 ```
 
-## Rodando no VPS (recomendado) com Docker
+Or `docker compose up -d`. Serve it behind HTTPS in production.
 
-```bash
-git clone <seu-repo> financas && cd financas
-cp .env.example .env            # defina APP_TOKEN forte e, se quiser, IMAP/HF
-docker compose up -d --build
-```
+## Design notes
 
-O serviço `app` sobe na porta 8000 e o serviço `sync` sincroniza a cada 6h.
-Coloque atrás de um proxy HTTPS (Caddy/Nginx/Traefik) com seu domínio.
+- Free-first: every paid integration is optional and disabled unless configured.
+- Parsers are tolerant and covered by tests (`tests/`); the Registrato PDF parser is heuristic by nature because the layout can change.
+- No real financial data is in this repository. The sample inputs are synthetic.
 
-### HTTPS rápido com Caddy (exemplo)
-
-```
-financas.seudominio.com {
-    reverse_proxy localhost:8000
-}
-```
-
----
-
-## Instalar como app no celular (PWA)
-
-1. Abra `https://financas.seudominio.com/?token=SEU_TOKEN` no Chrome/Safari.
-2. Menu do navegador → **“Adicionar à tela de início”**.
-3. Pronto: abre em tela cheia, com ícone, igual a um app — sem loja, sem custo.
-
----
-
-## Configuração (`.env`)
-
-| Variável | Para quê | Obrigatório |
-|---|---|---|
-| `APP_TOKEN` | Senha de acesso ao dashboard | **Sim** |
-| `DATABASE_URL` | SQLite (padrão) ou Postgres | Não |
-| `IMAP_HOST`/`IMAP_USER`/`IMAP_PASSWORD` | Ingestão por e-mail (Gmail etc.) | Não |
-| `HF_TOKEN` | Categorização via Hugging Face (grátis) | Não |
-| `ANTHROPIC_API_KEY` | Categorização via Claude (pago) | Não |
-| `PLUGGY_CLIENT_ID`/`SECRET` | Open Finance via Pluggy | Não |
-
-### E-mail (Gmail): como pegar a senha de app
-Com verificação em 2 etapas ativa, gere uma **senha de app** em
-<https://myaccount.google.com/apppasswords> e use em `IMAP_PASSWORD`
-(`IMAP_HOST=imap.gmail.com`). A leitura é **somente leitura** — nada é alterado,
-movido ou apagado na sua caixa.
-
-### Hugging Face (grátis)
-Crie um token em <https://huggingface.co/settings/tokens> e coloque em `HF_TOKEN`.
-Sem ele, a categorização usa só as regras (também funciona bem).
-
----
-
-## Segurança e privacidade
-
-- Seus dados ficam **no seu banco, no seu VPS**. Nada é enviado para terceiros,
-  exceto se você **optar** por HF/Anthropic (só a descrição da transação) ou Pluggy.
-- O arquivo `.env`, o banco (`*.db`) e quaisquer extratos estão no `.gitignore` —
-  **nunca** vão para o Git.
-- Sirva sempre atrás de **HTTPS** e use um `APP_TOKEN` forte.
-- Faça backup da pasta `data/` (contém o banco).
-
----
-
-## Estrutura
-
-```
-app/
-  main.py          # FastAPI: API + dashboard PWA + auth por token
-  config.py        # settings via .env
-  models.py        # Connection / Account / Transaction
-  categorize.py    # regras PT-BR + Hugging Face + (opcional) Anthropic
-  analysis.py      # agregações para os gráficos
-  ingest.py        # persistência + deduplicação
-  sync.py          # orquestra e-mail + Pluggy
-  providers/
-    fileimport.py  # OFX / CSV / PDF
-    email_imap.py  # ingestão por e-mail
-    pluggy.py      # Open Finance (opcional)
-  templates/ static/   # dashboard + PWA (manifest, service worker)
-scripts/sync.py    # sincronização via cron
-tests/             # testes de categorização e importação
-```
-
-## Testes
-
-```bash
-pytest -q
-```
-
-## Aviso
-
-Ferramenta de uso pessoal para organizar finanças. Não é aconselhamento
-financeiro. Confira sempre os números com o extrato oficial do seu banco.
+MIT licensed. Built by [André Feix](https://github.com/awf-cpu).
